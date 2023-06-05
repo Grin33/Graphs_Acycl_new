@@ -2,6 +2,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography.X509Certificates;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Graphs_Acycl_new
 {
@@ -22,31 +25,8 @@ namespace Graphs_Acycl_new
     }
     class Program
     {
-        //static List<Vertex> Init3(List<Vertex> toFill)
-        //{
-        //    toFill = new List<Vertex>()
-        //    {
-        //        new Vertex(1, new List<int>() { 3,4 })
-        //        ,new Vertex(2, new List<int>() { 1,5})
-        //        ,new Vertex(3, new List<int>() { 2 })
-        //        ,new Vertex(4, new List<int>() { 5 })
-        //        ,new Vertex(5, new List<int>() { 3 })
-        //    };
-        //    return toFill;
-        //}
-        //static List<Vertex> Init2(List<Vertex> toFill)
-        //{
-        //    toFill = new List<Vertex>()
-        //    {
-        //        new Vertex(1, new List<int>() { 2 })
-        //        ,new Vertex(2, new List<int>() { 3})
-        //        ,new Vertex(3, new List<int>() { 1,4,5 })
-        //        ,new Vertex(4, new List<int>() { 1 })
-        //        ,new Vertex(5, new List<int>() { 4 })
-        //    };
-        //    return toFill;
-        //    //1-2, 2-3, 3-4, 3-5, 5-4
-        //}
+        static object locker = new object();
+        static List<Vertex> Ans = new List<Vertex>();
         static List<Vertex> Init1(List<Vertex> toFill)
         {
             toFill = new List<Vertex>()
@@ -63,7 +43,6 @@ namespace Graphs_Acycl_new
             };
             return toFill;
         }
-        static List<Vertex> Ans = new List<Vertex>();
 
         static bool Deep_Check(List<Vertex> ToCheck, int Out, List<int> visitedPoints)
         {
@@ -153,6 +132,51 @@ namespace Graphs_Acycl_new
             }
         }
              
+        static void Check_Is_ParAns(List<Vertex> ToCheck, ref List<Vertex> localAns)
+        {
+            bool Acycl = Check_Acycl(ToCheck);
+            if(Acycl)
+            {
+                if((localAns.Count == 0) && (ToCheck.Count != 0))
+                {
+                    localAns = new List<Vertex>(ToCheck);
+                }
+                else if(localAns.Count < ToCheck.Count)
+                {
+                    localAns = new List<Vertex>(ToCheck);
+                }
+            }
+        }
+        static void Nest_ParShuffle(ref List<Vertex> conPoint, List<Vertex> PrevPoint, int v, ref List<Vertex> localans)
+        {
+            Check_Is_ParAns(PrevPoint, ref localans);
+            int n = v + 1;
+            for (int i = n; i < conPoint.Count; i++)
+            {
+                var temppoints = new List<Vertex>(PrevPoint) { conPoint[i] };
+                Nest_ParShuffle(ref conPoint, temppoints, i, ref localans);
+            }
+        }
+        static void Par_Shuffle(List<Vertex> points)
+        {
+            Parallel.For(0, points.Count, () => new List<Vertex>(), (i, loop, localans) =>
+            {
+                var tempoints = new List<Vertex>() { points[i] };
+                Nest_ParShuffle(ref points, tempoints,i, ref localans);
+                return localans;
+            },
+            (x)=>
+            {
+                lock (locker)
+                {
+                    if(Ans.Count < x.Count)
+                    {
+                        Ans = new List<Vertex>(x);
+                    }
+                }
+            }
+            );
+        }
         static void Main()
         {
             var Points = new List<Vertex>();
@@ -160,6 +184,16 @@ namespace Graphs_Acycl_new
             //var Ans = new List<string>();
             Shuffle(Points);
             foreach (var t in Ans)
+            {
+                Console.WriteLine(t.ToString());
+            }
+
+            Ans = new List<Vertex>();
+            var ParPoints = new List<Vertex>();
+            ParPoints = Init1(ParPoints);
+            Par_Shuffle(ParPoints);
+            Console.WriteLine("Parallel Ans");
+            foreach(var t in Ans)
             {
                 Console.WriteLine(t.ToString());
             }
